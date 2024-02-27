@@ -200,7 +200,8 @@ type OIDCProvider struct {
 
 type OIDCLogin struct {
 	GenericLogin `json:",inline"`
-	Code         string `json:"code" norman:"type=string,required"`
+	Code         string `json:"code" norman:"type=string"`
+	Token        string `json:"token" norman:"type=string"`
 }
 
 type KeyCloakOIDCProvider struct {

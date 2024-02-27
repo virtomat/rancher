@@ -97,7 +97,7 @@ func (o *OpenIDCProvider) LoginUser(ctx context.Context, oauthLoginInfo *v32.OID
 			return userPrincipal, nil, "", userClaimInfo, err
 		}
 	}
-	userInfo, oauth2Token, err := o.getUserInfo(&ctx, config, oauthLoginInfo.Code, &userClaimInfo, "")
+	userInfo, oauth2Token, err := o.getUserInfo(&ctx, config, oauthLoginInfo, &userClaimInfo, "")
 	if err != nil {
 		return userPrincipal, groupPrincipals, "", userClaimInfo, err
 	}
@@ -209,7 +209,7 @@ func (o *OpenIDCProvider) RefetchGroupPrincipals(principalID string, secret stri
 		return groupPrincipals, err
 	}
 	//do not need userInfo or oauth2Token since we are only processing groups
-	_, _, err = o.getUserInfo(&o.CTX, config, secret, &claimInfo, user.Name)
+	_, _, err = o.getUserInfo(&o.CTX, config, &v32.OIDCLogin{Code: secret}, &claimInfo, user.Name)
 	if err != nil {
 		return groupPrincipals, err
 	}
@@ -360,7 +360,7 @@ func (o *OpenIDCProvider) GetUserExtraAttributes(userPrincipal v3.Principal) map
 	return extras
 }
 
-func (o *OpenIDCProvider) getUserInfo(ctx *context.Context, config *v32.OIDCConfig, authCode string, claimInfo *ClaimInfo, userName string) (*oidc.UserInfo, *oauth2.Token, error) {
+func (o *OpenIDCProvider) getUserInfo(ctx *context.Context, config *v32.OIDCConfig, loginData *v32.OIDCLogin, claimInfo *ClaimInfo, userName string) (*oidc.UserInfo, *oauth2.Token, error) {
 	var userInfo *oidc.UserInfo
 	var oauth2Token *oauth2.Token
 	var err error
@@ -376,15 +376,20 @@ func (o *OpenIDCProvider) getUserInfo(ctx *context.Context, config *v32.OIDCConf
 	}
 	oauthConfig := ConfigToOauthConfig(provider.Endpoint(), config)
 	var verifier = provider.Verifier(&oidc.Config{ClientID: config.ClientID})
-	if err := json.Unmarshal([]byte(authCode), &oauth2Token); err != nil {
-		oauth2Token, err = oauthConfig.Exchange(updatedContext, authCode, oauth2.SetAuthURLParam("scope", strings.Join(oauthConfig.Scopes, " ")))
-		if err != nil {
-			return userInfo, oauth2Token, err
+	if loginData.Code != "" {
+		if err := json.Unmarshal([]byte(loginData.Code), &oauth2Token); err != nil {
+			oauth2Token, err = oauthConfig.Exchange(updatedContext, loginData.Code, oauth2.SetAuthURLParam("scope", strings.Join(oauthConfig.Scopes, " ")))
+			if err != nil {
+				return userInfo, oauth2Token, err
+			}
 		}
-		_, err = verifier.Verify(updatedContext, oauth2Token.AccessToken)
-		if err != nil {
-			return userInfo, oauth2Token, err
-		}
+	} else {
+		oauth2Token = &oauth2.Token{AccessToken: loginData.Token}
+	}
+
+	_, err = verifier.Verify(updatedContext, oauth2Token.AccessToken)
+	if err != nil {
+		return userInfo, oauth2Token, err
 	}
 	// Valid will return false if access token is expired
 	if !oauth2Token.Valid() {
